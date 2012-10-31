@@ -1,0 +1,133 @@
+<html>
+
+Because I am self-taught in many areas of computer science and more advanced statistics and probability theory, and because I have a deep aversion both to looking foolish and being full of it (in no way related to any long, troubled history of doing both or anything), I tend to try whenever possible to do things the hard way.
+
+This means I use the command line for way more stuff than is healthy and I often rewrite when I could just copy and paste, obnoxious things like that. It also means that, when I'm learning a new model or tool, I try and write elaborate simulations that I usually never share to make sure I actually understand what's going in and what's coming out. This also happens when I'm trying to explain a concept or problem to someone, as evidenced by the earlier Monty Hall Monte Carlo post. You'll have to ask my coworkers, friends and family members whether this makes me more capable at imparting any of this knowledge to others or doing useful things with it, I guess. (On second thought, don't.) Part of the point of this site is to try and share these instances of "Incredible Overkill", as one of my professors once called it in the (unlikely?) event that someone else may find them useful.
+
+Probabilistic topic modeling was added to my ever-growing list of obsessions in the last year and I have spend a lot of time consuming research papers, tutorials and tool documentation in an effort to apply this exciting area of
+research to problems at work and in personal projects. <a href='http://en.wikipedia.org/wiki/Topic_model'>Wikipedia</a> defines a topic model as "a type of statistical model for discovering abstract 'topics' that occur in a collection of documents". The research in this area is quite new, with the major developments of Probabilisitic Latent Semantic Indexing and the most common topic model, Latent Dirichlet allocation models, in in 1999 and 2012, respectively. The chief developer of the Latent Dirichlet allocation models, <a href='http://www.cs.princeton.edu/~blei/'>David Blei of Princeton's computer science department</a>, has written many useful and accessible treatments of the technique, such as those available <a href='http://www.cs.princeton.edu/~blei/papers/Blei2012.pdf'>here</a>, <a href='http://www.cs.princeton.edu/~blei/kdd-tutorial.pdf'>here</a>, <a href='http://www.cs.princeton.edu/~blei/papers/BleiLafferty2009.pdf'>here</a>. Many of the most exciting areas of research in computational linguistics involve extensions of LDA, and many of those areas are being persued by talented local machine learning, computer science and computation linguistics professionals and academics in the Baltimore/Washington DC area, where I call home.
+
+I wrote most of this code a couple months, in an effort to understand all the moving parts of the basic model and understand what I am putting in and what I am getting out. When I do these things for myself, I will lay out the basic model in (excruciating?) detail and attempt to examine the assumptions inherent in it, write code that simulates data generated according to those assumptions and that fits the model to that simulated data. I usually try to also break those assumptions and see how those affect the model output. It is usually not fit for public consumption - though it is ALWAYS well commmented - so this post is the result of a fair amount of polishing. That said, it could still be wrong in any number of ways and if you think it is, please do let me know.
+
+Function to generate simulated corpus:
+
+<code>
+### Basic LDA Topic Model Simulation ###
+### Generate Simulated Corpus ###
+library(ggplot2)
+library(tm)
+library(MCMCpack)
+
+simulateCorpus <- function(	M, # number of documents
+							nTerms, 
+							docLengths, 
+							K,  # Number of Topics
+							alphA, # parameter for symmetric Document/Topic dirichlet distribution
+							betA, # parameter for Topic/Term dirichlet distribution
+							Alpha=rep(alphA,K), # number-of-topics length vector set to symmetric alpha parameter across all topics
+							Beta=rep(betA,nTerms))  # number-of-terms length vector set to symmetric beta paramater across all terms 
+							{
+
+	# Labels
+	Terms <- paste("Term",seq(nTerms))
+	Topics <- paste("Topic", seq(K))
+	Documents <- paste("Document", seq(M))
+
+	## Generate latent topic and term distributions
+	# "True" Document/Topic distribution matrix
+	Theta <- rdirichlet(M, Alpha) 
+	colnames(Theta) <- Topics
+	rownames(Theta) <- Documents
+
+	# "True" Topic/Term Distribution Matrix
+	Phi <- rdirichlet(K, Beta) 
+	colnames(Phi) <- Terms
+	rownames(Phi) <- Topics
+
+	## Function to generate individual document
+	generateDoc <- function(docLength, topic_dist, terms_topics_dist){
+		# docLength is specific document length
+		# topic_dist is specific topic distribution for this document
+		# terms_topics_dist is terms distribution matrix over all topics
+		document <- c()
+		for (i in seq(docLength)){
+			# For each word in a document, choose a topic from that document's topic distribution
+			topic <- rmultinom(1, 1, topic_dist) 
+			
+			# Then choose a term from that topic's term distribution
+			term <- rmultinom(1, 1, terms_topics_dist[topic,]) 
+			
+			# and append term to document vector
+			document <- c(document, colnames(terms_topics_dist)[which.max(term)]) 
+			}
+		return(document)
+		}
+
+	## generate "observed" corpus as list of terms
+	corpus <- list()
+	for (i in seq(M)){
+		corpus[[i]] <- generateDoc(docLengths[i], Theta[i,], Phi)
+		}
+
+	## convert document term vectors to frequency vectors
+	freqsLists <- llply(corpus, table)
+
+	## write values to termFreqMatrix
+	termFreqMatrix <- matrix(nrow=M, ncol=nTerms, 0)
+	colnames(termFreqMatrix) <- Terms
+	rownames(termFreqMatrix) <- Documents
+	for (i in seq(M)){
+		termFreqMatrix[i,names(freqsLists[[i]])] <- freqsLists[[i]]
+		}
+
+	stopifnot(rowSums(termFreqMatrix) == docLengths)
+
+	return(list("docs"=corpus, 'termFreqMatrix'=termFreqMatrix, "Theta"=Theta, "Phi"=Phi))
+
+}
+</code>
+
+Code that simulates corpus using above function:
+<code>
+## Perform Inference on Simulated LDA Corpus
+library(MCMCpack)
+library(ggplot2)
+library(tm)
+library(topicmodels)
+library(plyr)
+setwd('/home/rmealey/Dropbox/LaPlacianAmbitions/10-TopicModels')
+
+##################################
+### 1. Simulate Data
+
+# Default Values
+M <- 1000 # number of documents
+nTerms <- 100 # number of terms
+
+## document lengths all identical at 100
+docLengths <- rep(100,M)
+
+## document lengths (word counts) distributed according to poisson(100)
+#docLengths <- rpois(M,100)
+
+## Set additional hyperparameters to some customary values used in LDA priors
+#K <- round(nTerms/M) # Number of Topics
+K <- 10 # Number of Topics
+alphA <- 1/K # parameter for symmetric Document/Topic dirichlet distribution
+betA <- 1/K # parameter for Topic/Term dirichlet distribution
+AlphA <- rep(alphA, K) # number-of-topics length vector set to symmetric alpha paramater across all topics
+BetA <- rep(betA, nTerms) # number-of-terms length vector set to symmetric beta paramater across all terms 
+
+## generate simulated corpus (See script SimulateCorpus.R)
+# Returns corpus list object, default 100 documents, 1000 terms, 1000/100=10 topics
+# with documents and "true" values for doc/topic matrix and topic/term matrix
+source('SimulateCorpus.R') 
+corpus <- simulateCorpus(M, nTerms, docLengths, K, alphA, betA)
+
+							  ####
+##################################
+</code>
+
+I will finish polishing the inferential code and put that up shortly. But you should be able, if you're exploring topic models, to use this code to see how how best to tune the canned R packages and play with the "true" hyperparameters and see what effect they have on the output. 
+
+</html>
