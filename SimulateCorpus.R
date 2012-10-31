@@ -5,15 +5,14 @@ library(tm)
 library(MCMCpack)
 
 simulateCorpus <- function(	M, # number of documents
-							nTerms, 
-							docLengths, 
-							K,  # Number of Topics
-							alphA, # parameter for symmetric Document/Topic dirichlet distribution
-							betA, # parameter for Topic/Term dirichlet distribution
-							Alpha=rep(alphA,K), # number-of-topics length vector set to symmetric alpha parameter across all topics
-							Beta=rep(betA,nTerms))  # number-of-terms length vector set to symmetric beta paramater across all terms 
-							{
-
+				nTerms, 
+				docLengths, 
+				K,  # Number of Topics
+				alphA, # parameter for symmetric Document/Topic dirichlet distribution
+				betA, # parameter for Topic/Term dirichlet distribution
+				Alpha=rep(alphA,K), # number-of-topics length vector set to symmetric alpha parameter across all topics
+				Beta=rep(betA,nTerms))  # number-of-terms length vector set to symmetric beta paramater across all terms
+	{
 	# Labels
 	Terms <- paste("Term",seq(nTerms))
 	Topics <- paste("Topic", seq(K))

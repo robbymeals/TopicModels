@@ -34,7 +34,6 @@ BetA <- rep(betA, nTerms) # number-of-terms length vector set to symmetric beta 
 source('SimulateCorpus.R') 
 corpus <- simulateCorpus(M, nTerms, docLengths, K, alphA, betA)
 
-							  ####
 ##################################
 
 
@@ -59,7 +58,6 @@ Phi_est <- posterior(lda1,corpus[['termFreqMatrix']])$terms
 colnames(Phi_est) <- Terms
 rownames(Phi_est) <- Topics
 
-							  ####
 ##################################
 
 ##################################
@@ -68,6 +66,4 @@ rownames(Phi_est) <- Topics
 Theta_true <- corpus[['Theta']]
 Phi_true <- corpus[['Phi']]
 
-
-							  ####
 ##################################
